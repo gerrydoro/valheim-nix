@@ -19,6 +19,8 @@
         default = packages.valheim-server;
       };
 
+      checks.${system} = packages;
+
       nixosModules.default = import ./modules;
     };
 }
