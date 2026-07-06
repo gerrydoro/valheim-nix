@@ -181,7 +181,7 @@ in
     };
 
     # Install required packages
-    environment.systemPackages = with pkgs; [
+    environment.systemPackages = [
       startScript
       cfg.steamCmdPackage
     ];

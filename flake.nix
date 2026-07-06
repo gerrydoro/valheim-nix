@@ -1,28 +1,24 @@
 {
   description = "Valheim dedicated game server NixOS module";
 
-  outputs =
-    { self, nixpkgs, ... }:
+  inputs.nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+
+  outputs = { self, nixpkgs, ... }:
     let
-      systems = [ "x86_64-linux" ];
-      forAllSystems = nixpkgs.lib.genAttrs systems;
+      system = "x86_64-linux";
+      pkgs = import nixpkgs {
+        inherit system;
+        config.allowUnfree = true;
+      };
+      packages = import ./packages/valheim-server {
+        inherit pkgs;
+      };
     in
     {
-      packages = forAllSystems (
-        system:
-        let
-          pkgs = import nixpkgs {
-            inherit system;
-          };
-        in
-        {
-          valheim-server = import ./default.nix {
-            inherit pkgs;
-          };
-          default = self.packages.${system}.valheim-server;
-        }
-      );
+      packages.${system} = packages // {
+        default = packages.valheim-server;
+      };
 
-      nixosModules.default = import ./module.nix;
+      nixosModules.default = import ./modules;
     };
 }
