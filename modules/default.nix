@@ -53,12 +53,6 @@ in
   options.services.valheim = {
     enable = mkEnableOption "Valheim game server";
 
-    package = mkOption {
-      type = types.package;
-      default = null;
-      description = "Valheim server package. If null, the server will be downloaded via SteamCMD.";
-    };
-
     serverName = mkOption {
       type = types.str;
       default = "NixOS Valheim Server";

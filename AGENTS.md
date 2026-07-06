@@ -13,7 +13,6 @@
 ## Gotchas
 - **x86_64-linux only** — `flake.nix` hardcodes `system = "x86_64-linux"` and the package `meta.platforms` restricts to x86_64. Do not add aarch64 without updating both places.
 - **allowUnfree is required** — steamcmd is unfreeRedistributable. The flake sets this; do not remove it.
-- **`services.valheim.package` option is defined but unused** — it exists in the module options but is never referenced in the config block. Either wire it into the startup script or remove it.
 - **File ownership** — the repo was initially owned by root. If git commands fail with permission errors, run `sudo chown -R $USER:$USER /home/gerardo/MyStuff/valheim/`.
 - **No test/lint pipeline** — this is a pure Nix flake. Verification is `nix flake show` + `nix build`.
 
