@@ -35,11 +35,15 @@ let
     cd "$STEAM_SERVER_DIR" || exit 1
 
     echo "Starting Valheim server..."
+    valheimPassword="${cfg.password}";
+    if [ -n "${cfg.passwordFile}" ]; then
+      valheimPassword=$(cat "${cfg.passwordFile}");
+    fi
     exec ${pkgs.steam-run}/bin/steam-run ./valheim_server.x86_64 \
       -name "${cfg.serverName}" \
       -port ${toString cfg.port} \
       -world "${cfg.worldName}" \
-      -password "${cfg.password}" \
+      -password "$$valheimPassword" \
       -public ${if cfg.public then "1" else "0"} \
       -nographics -batchmode -server -autostart \
       -maxplayers ${toString cfg.maxPlayers} \
@@ -75,6 +79,12 @@ in
       type = types.str;
       default = "changeme";
       description = "Password for the server";
+    };
+
+    passwordFile = mkOption {
+      type = types.nullOr types.path;
+      default = null;
+      description = "Path to a file containing the server password. Mutually exclusive with password.";
     };
 
     public = mkOption {
