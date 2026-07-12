@@ -24,6 +24,8 @@ Nix flake providing a Valheim dedicated game server NixOS module and a package b
     enable = true;
     serverName = "My Valheim Server";
     password = "s3cur3P@ssw0rd";  # Change from default!
+    # Or use a file-based password for secrets management (recommended):
+    # passwordFile = config.sops.secrets.valheim-password.path;
     port = 2456;
     worldName = "MyWorld";
     maxPlayers = 10;
@@ -48,6 +50,7 @@ nix build github:<user>/valheim
 | `port` | int | `2456` | Server port |
 | `worldName` | string | `"World"` | Default world name |
 | `password` | string | `"changeme"` | Server password |
+| `passwordFile` | str or null | `null` | Path to file containing the server password (alternative to `password`, recommended for secrets management) |
 | `public` | bool | `false` | Whether the server is public |
 | `maxPlayers` | int | `10` | Maximum number of players |
 | `openFirewall` | bool | `false` | Open firewall ports |
@@ -85,6 +88,7 @@ nix flake check            # Build verification
 - **Default password** — Change from `"changeme"` before deploying to production
 - **x86_64 only** — Valheim server binaries are x86_64 Linux only
 - **Steam account** — Server downloads use anonymous login; no Steam account required
+- **Secrets management** — Use `passwordFile` with SOPS instead of hardcoding `password` in your NixOS configuration
 
 ## Development
 
