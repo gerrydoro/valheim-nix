@@ -14,9 +14,7 @@ let
 
   # Valheim server startup script
   startScript = pkgs.writeShellScriptBin "valheim-start" ''
-    #!/bin/sh
-    export templdpath=$LD_LIBRARY_PATH
-    export LD_LIBRARY_PATH=/var/lib/valheim/.local/share/Steam/Steamapps/common/Valheim dedicated server/linux64:$LD_LIBRARY_PATH
+    export LD_LIBRARY_PATH="/var/lib/valheim/.local/share/Steam/Steamapps/common/Valheim dedicated server/linux64:$LD_LIBRARY_PATH"
     export SteamAppId=892970
 
     # The server is installed in the Steam directory structure
@@ -31,26 +29,35 @@ let
       ${cfg.steamCmdPackage}/bin/steamcmd +login anonymous +force_install_dir "$STEAM_SERVER_DIR" +app_update 896660 validate +quit
     fi
 
+    # SteamGameServer looks for steamclient.so under $HOME/.steam/sdk64
+    mkdir -p "$HOME/.steam/sdk64"
+    if [ -f "$STEAM_SERVER_DIR/linux64/steamclient.so" ]; then
+      ln -sf "$STEAM_SERVER_DIR/linux64/steamclient.so" "$HOME/.steam/sdk64/steamclient.so"
+    fi
+
     # Set working directory to the server location
     cd "$STEAM_SERVER_DIR" || exit 1
 
     echo "Starting Valheim server..."
     valheimPassword="${cfg.password}";
-    if [ -n "${cfg.passwordFile}" ]; then
-      valheimPassword=$(cat "${cfg.passwordFile}");
-    fi
+    ${optionalString (cfg.passwordFile != null) ''
+      # Read from a systemd credential if present, else from the passwordFile directly
+      if [ -n "$CREDENTIALS_DIRECTORY" ] && [ -f "$CREDENTIALS_DIRECTORY/valheim-password" ]; then
+        valheimPassword=$(cat "$CREDENTIALS_DIRECTORY/valheim-password");
+      elif [ -f "${cfg.passwordFile}" ]; then
+        valheimPassword=$(cat "${cfg.passwordFile}");
+      fi
+    ''}
     exec ${pkgs.steam-run}/bin/steam-run ./valheim_server.x86_64 \
       -name "${cfg.serverName}" \
       -port ${toString cfg.port} \
       -world "${cfg.worldName}" \
-      -password "$$valheimPassword" \
+      -password "$valheimPassword" \
       -public ${if cfg.public then "1" else "0"} \
       -nographics -batchmode -server -autostart \
       -maxplayers ${toString cfg.maxPlayers} \
       ${optionalString cfg.enableSaveDebug "-savedebug"} \
       ${optionalString cfg.enableDebug "-debug"}
-
-    export LD_LIBRARY_PATH=$templdpath
   '';
 in
 {
@@ -181,6 +188,10 @@ in
           "/tmp"
           "/var/tmp"
         ];
+      }
+      # Make a root-only passwordFile (e.g. sops 0400) readable as a systemd credential
+      // optionalAttrs (cfg.passwordFile != null) {
+        LoadCredential = "valheim-password:${cfg.passwordFile}";
       };
     };
 
