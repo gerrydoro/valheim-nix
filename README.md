@@ -8,6 +8,7 @@ Nix flake providing a Valheim dedicated game server NixOS module and a package b
 - **Package** — Bundles steamcmd and steam-run for manual server management
 - **Runtime download** — SteamCMD automatically fetches server binaries on first start
 - **Hardened** — Systemd sandboxing with strict protection, read-only root, and restricted write paths
+- **Verified** — `nix flake check` evaluates the NixOS module *and* runs the start script against redirection-free stubs, covering download, symlink, password and exec behavior
 
 ## Quick Start
 
@@ -36,10 +37,20 @@ Nix flake providing a Valheim dedicated game server NixOS module and a package b
 
 ### As a package
 
+The package is a runnable launcher: it downloads the server with SteamCMD on
+first use and needs a writable state directory plus a password.
+
 ```bash
 nix build github:<user>/valheim
-./result/bin/valheim-server
+VALHEIM_STATE_DIR=./state VALHEIM_PASSWORD=s3cret ./result/bin/valheim-server
 ```
+
+Every setting the NixOS module exposes is available as a `VALHEIM_*` environment
+variable at run time (e.g. `VALHEIM_SERVER_NAME`, `VALHEIM_PORT`,
+`VALHEIM_WORLD`, `VALHEIM_MAX_PLAYERS`, `VALHEIM_PUBLIC=1`,
+`VALHEIM_AUTO_UPDATE=1`), so the same binary can be reconfigured without a
+rebuild. The password can also come from a file (`VALHEIM_PASSWORD_FILE`) or,
+under systemd, from the `valheim-password` credential.
 
 ## Module Options
 
@@ -68,10 +79,12 @@ When `openFirewall = true`, the following ports are opened (Valheim uses `port` 
 
 ## How It Works
 
-1. The systemd service starts the `valheim-start` script
-2. If the server binaries don't exist, SteamCMD downloads them (app ID 896660)
-3. The server runs via `steam-run` with the required library paths
-4. World data and server files are stored in `/var/lib/valheim`
+1. The systemd service starts the `valheim-start` script (`scripts/valheim-start.sh`, built by `packages/valheim-server/start-script.nix`)
+2. The launcher resolves its settings from the baked module values, overridable by `VALHEIM_*` environment variables
+3. If the server binaries don't exist, SteamCMD downloads them (app ID 896660)
+4. The password is resolved from the systemd credential, a file, the environment, or the baked value — then validated
+5. The server runs via `steam-run` with the required library paths
+6. World data and server files are stored in `/var/lib/valheim`
 
 ## Commands
 
@@ -79,7 +92,7 @@ When `openFirewall = true`, the following ports are opened (Valheim uses `port` 
 nix build .#              # Build default package
 nix build .#valheim-server # Build valheim-server package
 nix flake show .           # Show flake outputs
-nix flake check            # Build verification
+nix flake check            # Packages + module interface + start script checks
 ```
 
 ## Gotchas
@@ -87,8 +100,8 @@ nix flake check            # Build verification
 - **Unfree software** — `allowUnfree = true` is required in your nixpkgs config
 - **Runtime download** — Server binaries are fetched by SteamCMD on first start, not at build time
 - **Default password** — Change from `"changeme"` before deploying to production
-- **Password rules** — The server refuses to boot with a password shorter than 5 characters, or one that appears inside the world name. These are checked both at config-eval time (for `password`) and at runtime (for `passwordFile`)
-- **Password on the command line** — Valheim only accepts the password via `-password`, so it is visible in `ps`/`systemctl status` on the host regardless of `passwordFile`. `passwordFile` still keeps it out of your NixOS config and the Nix store
+- **Password rules** — The server refuses to boot with a password shorter than 5 characters, or one that appears inside the world name. These are checked both at config-eval time (for `password`) and at runtime (for `passwordFile`); both are covered by `nix flake check`
+- **Password on the command line** — Valheim only accepts the password via `-password`, so it is visible in `ps`/`systemctl status` on the host regardless of `passwordFile`. `passwordFile` still keeps it out of your NixOS config and the Nix store, while a plain `password` is baked into the store copy of the start script. Passwords may contain quotes or `$` — the launcher quotes them safely
 - **x86_64 only** — Valheim server binaries are x86_64 Linux only
 - **Steam account** — Server downloads use anonymous login; no Steam account required
 - **Secrets management** — Use `passwordFile` with SOPS instead of hardcoding `password` in your NixOS configuration
@@ -96,7 +109,7 @@ nix flake check            # Build verification
 ## Development
 
 ```bash
-nix flake check       # Verify flake builds
+nix flake check       # Verify packages, module interface, and start script
 nix flake show .      # Inspect flake outputs
 nix fmt               # Format Nix files
 nix develop           # Dev shell with nixfmt, steamcmd, steam-run

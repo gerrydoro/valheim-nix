@@ -11,77 +11,28 @@ let
   cfg = config.services.valheim;
   valheimUser = "valheim";
   valheimGroup = "valheim";
+  stateDir = "/var/lib/${valheimUser}";
 
-  # Valheim server startup script
-  startScript = pkgs.writeShellScriptBin "valheim-start" ''
-    export LD_LIBRARY_PATH="/var/lib/valheim/.local/share/Steam/Steamapps/common/Valheim dedicated server/linux64:$LD_LIBRARY_PATH"
-    export SteamAppId=892970
-
-    # The server is installed in the Steam directory structure
-    STEAM_SERVER_DIR="/var/lib/valheim/.local/share/Steam/Steamapps/common/Valheim dedicated server"
-
-    # Ensure the server directory exists
-    mkdir -p "$STEAM_SERVER_DIR"
-
-    # Download (or update) the server binaries via SteamCMD
-    steamcmd_update() {
-      ${cfg.steamCmdPackage}/bin/steamcmd +login anonymous +force_install_dir "$STEAM_SERVER_DIR" +app_update 896660 validate +quit
-    }
-
-    # Download the server on first start, and optionally refresh it on every start
-    if [ ! -f "$STEAM_SERVER_DIR/valheim_server.x86_64" ]; then
-      echo "Valheim server not found, downloading via SteamCMD..."
-      steamcmd_update
-    ${optionalString cfg.autoUpdate ''
-      else
-        echo "Checking for Valheim server updates via SteamCMD..."
-        steamcmd_update
-    ''}
-    fi
-
-    # SteamGameServer looks for steamclient.so under $HOME/.steam/sdk64
-    mkdir -p "$HOME/.steam/sdk64"
-    if [ -f "$STEAM_SERVER_DIR/linux64/steamclient.so" ]; then
-      ln -sf "$STEAM_SERVER_DIR/linux64/steamclient.so" "$HOME/.steam/sdk64/steamclient.so"
-    fi
-
-    # Set working directory to the server location
-    cd "$STEAM_SERVER_DIR" || exit 1
-
-    echo "Starting Valheim server..."
-    valheimPassword="${cfg.password}";
-    ${optionalString (cfg.passwordFile != null) ''
-      # Read from a systemd credential if present, else from the passwordFile directly
-      if [ -n "$CREDENTIALS_DIRECTORY" ] && [ -f "$CREDENTIALS_DIRECTORY/valheim-password" ]; then
-        valheimPassword=$(cat "$CREDENTIALS_DIRECTORY/valheim-password");
-      elif [ -f "${cfg.passwordFile}" ]; then
-        valheimPassword=$(cat "${cfg.passwordFile}");
-      fi
-    ''}
-
-    # Valheim refuses to boot with a short password, or one that appears in the world name
-    if [ "''${#valheimPassword}" -lt 5 ]; then
-      echo "ERROR: the server password must be at least 5 characters long" >&2
-      exit 1
-    fi
-    case "$valheimPassword" in
-      *"${cfg.worldName}"*)
-        echo "ERROR: the server password must not contain the world name" >&2
-        exit 1
-        ;;
-    esac
-
-    exec ${pkgs.steam-run}/bin/steam-run ./valheim_server.x86_64 \
-      -name "${cfg.serverName}" \
-      -port ${toString cfg.port} \
-      -world "${cfg.worldName}" \
-      -password "$valheimPassword" \
-      -public ${if cfg.public then "1" else "0"} \
-      -nographics -batchmode -server -autostart \
-      -maxplayers ${toString cfg.maxPlayers} \
-      ${optionalString cfg.enableSaveDebug "-savedebug"} \
-      ${optionalString cfg.enableDebug "-debug"}
-  '';
+  # The launcher is built by packages/valheim-server/start-script.nix; this module
+  # is the adapter that feeds the services.valheim option values into it and
+  # wires the result into systemd/users/firewall.
+  startScript = import ../packages/valheim-server/start-script.nix { inherit pkgs; } {
+    inherit (cfg)
+      serverName
+      port
+      worldName
+      maxPlayers
+      public
+      enableSaveDebug
+      enableDebug
+      autoUpdate
+      steamCmdPackage
+      ;
+    # Bake the password only when it comes from config; with passwordFile the
+    # secret stays out of the Nix store and is passed as a systemd credential.
+    password = if cfg.passwordFile == null then cfg.password else "";
+    inherit stateDir;
+  };
 in
 {
   options.services.valheim = {
@@ -181,7 +132,7 @@ in
     users.users.${valheimUser} = {
       isNormalUser = true;
       group = valheimGroup;
-      home = "/var/lib/valheim";
+      home = stateDir;
       createHome = true;
       description = "Valheim Server User";
       uid = config.ids.uids.${valheimUser} or null;
@@ -208,15 +159,15 @@ in
 
       serviceConfig = {
         Type = "exec";
-        User = "${valheimUser}";
-        Group = "${valheimGroup}";
+        User = valheimUser;
+        Group = valheimGroup;
         # No WorkingDirectory: it may not exist yet on a fresh install, and the
         # start script cd's into it itself after (re)creating it.
         ExecStart = "${startScript}/bin/valheim-start";
         Restart = "always";
         RestartSec = 10;
 
-        # Directory creation and permissions
+        # Directory creation and permissions ("valheim" mirrors stateDir above)
         StateDirectory = "valheim";
         StateDirectoryMode = "0755";
 
@@ -225,7 +176,7 @@ in
         PrivateTmp = true;
         ProtectSystem = "strict";
         ProtectHome = true;
-        ReadWritePaths = [ "/var/lib/valheim" ];
+        ReadWritePaths = [ stateDir ];
       }
       # Make a root-only passwordFile (e.g. sops 0400) readable as a systemd credential
       // optionalAttrs (cfg.passwordFile != null) {

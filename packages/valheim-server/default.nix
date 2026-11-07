@@ -1,27 +1,13 @@
+# The standalone package: the same launcher the NixOS module installs, built with
+# default settings. Point it at a state dir and a password and it will download
+# and run a full dedicated server outside of NixOS:
+#
+#   nix build .#valheim-server
+#   VALHEIM_STATE_DIR=./state VALHEIM_PASSWORD=s3cret ./result/bin/valheim-server
 { pkgs }:
 
-let
-  valheimTools = pkgs.writeShellApplication {
-    name = "valheim-server";
-    runtimeInputs = [
-      pkgs.steamcmd
-      pkgs.steam-run
-    ];
-    text = ''
-      echo "Valheim server tools available:"
-      echo "  - steamcmd: ${pkgs.steamcmd}/bin/steamcmd"
-      echo "  - steam-run: ${pkgs.steam-run}/bin/steam-run"
-      echo ""
-      echo "Use these tools with the NixOS module to run a Valheim dedicated server."
-    '';
-
-    meta = with pkgs.lib; {
-      description = "Valheim dedicated game server tools (steamcmd + steam-run)";
-      license = licenses.mit;
-      platforms = [ "x86_64-linux" ];
-    };
-  };
-in
 {
-  valheim-server = valheimTools;
+  valheim-server = import ./start-script.nix { inherit pkgs; } {
+    name = "valheim-server";
+  };
 }

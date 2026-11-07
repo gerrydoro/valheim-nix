@@ -21,6 +21,12 @@
         import ./packages/valheim-server {
           pkgs = pkgsFor system;
         };
+
+      checksFor =
+        system:
+        import ./checks {
+          pkgs = pkgsFor system;
+        };
     in
     {
       packages = forAllSystems (
@@ -34,7 +40,9 @@
         }
       );
 
-      checks = forAllSystems packagesFor;
+      # Packages are checks too (nix build verification), plus the module and
+      # start-script interface checks in checks/.
+      checks = forAllSystems (system: (packagesFor system) // (checksFor system));
 
       formatter = forAllSystems (system: (pkgsFor system).nixfmt-tree);
 
